@@ -84,7 +84,8 @@ class ConstImbalanceBars(BaseImbalanceBars):
 
     def __init__(self, metric: str, expected_imbalance_window: int,
                  exp_num_ticks_init: int, batch_size: int,
-                 analyse_thresholds: bool):
+                 analyse_thresholds: bool,
+                 reset_stats: bool):
         """
         Constructor
 
@@ -96,7 +97,8 @@ class ConstImbalanceBars(BaseImbalanceBars):
         """
         BaseImbalanceBars.__init__(self, metric, batch_size, expected_imbalance_window,
                                    exp_num_ticks_init,
-                                   analyse_thresholds)
+                                   analyse_thresholds,
+                                   reset_stats)
 
     def _get_exp_num_ticks(self):
         return self.thresholds['exp_num_ticks']
@@ -197,7 +199,7 @@ def get_ema_tick_imbalance_bars(file_path_or_df: Union[str, Iterable[str], pd.Da
 
 def get_const_dollar_imbalance_bars(file_path_or_df: Union[str, Iterable[str], pd.DataFrame], expected_imbalance_window: int = 10000,
                                     exp_num_ticks_init: int = 20000,
-                                    batch_size: int = 2e7, analyse_thresholds: bool = False,
+                                    batch_size: int = 2e7, analyse_thresholds: bool = False, reset_stats: bool = True,
                                     verbose: bool = True, to_csv: bool = False, output_path: Optional[str] = None):
     """
     Creates the Const dollar imbalance bars: date_time, open, high, low, close, volume, cum_buy_volume, cum_ticks, cum_dollar_value.
@@ -216,7 +218,7 @@ def get_const_dollar_imbalance_bars(file_path_or_df: Union[str, Iterable[str], p
     bars = ConstImbalanceBars(metric='dollar_imbalance',
                               expected_imbalance_window=expected_imbalance_window,
                               exp_num_ticks_init=exp_num_ticks_init,
-                              batch_size=batch_size, analyse_thresholds=analyse_thresholds)
+                              batch_size=batch_size, analyse_thresholds=analyse_thresholds, reset_stats=reset_stats)
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose, to_csv=to_csv, output_path=output_path)
 

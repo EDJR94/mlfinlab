@@ -52,7 +52,7 @@ class BaseBars(ABC):
         # Cache properties
         self.open_price, self.prev_price, self.close_price = None, None, None
         self.high_price, self.low_price = -np.inf, np.inf
-        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0}
+        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0, 'cum_sell_volume': 0}
         self.tick_num = 0  # Tick number when bar was formed
 
         # Batch_run properties
@@ -84,7 +84,7 @@ class BaseBars(ABC):
         # Read csv in batches
         count = 0
         final_bars = []
-        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume', 'cum_buy_volume', 'cum_ticks',
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume', 'cum_buy_volume','cum_sell_volume', 'cum_ticks',
                 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:  # pragma: no cover
@@ -171,7 +171,7 @@ class BaseBars(ABC):
         return list_bars
 
     @abstractmethod
-    def _extract_bars(self, data: pd.DataFrame) -> list:
+    def _extract_bars(self, data: pd.DataFrame, reset_stats: bool) -> list:
         """
         This method is required by all the bar types and is used to create the desired bars.
 
@@ -242,12 +242,13 @@ class BaseBars(ABC):
         close_price = price
         volume = self.cum_statistics['cum_volume']
         cum_buy_volume = self.cum_statistics['cum_buy_volume']
+        cum_sell_volume = self.cum_statistics['cum_sell_volume']
         cum_ticks = self.cum_statistics['cum_ticks']
         cum_dollar_value = self.cum_statistics['cum_dollar_value']
 
         # Update bars
         list_bars.append(
-            [date_time, self.tick_num, open_price, high_price, low_price, close_price, volume, cum_buy_volume,
+            [date_time, self.tick_num, open_price, high_price, low_price, close_price, volume, cum_buy_volume, cum_sell_volume,
              cum_ticks,
              cum_dollar_value])
 
@@ -299,7 +300,8 @@ class BaseImbalanceBars(BaseBars):
 
     def __init__(self, metric: str, batch_size: int,
                  expected_imbalance_window: int, exp_num_ticks_init: int,
-                 analyse_thresholds: bool):
+                 analyse_thresholds: bool,
+                 reset_stats: bool):
         """
         Constructor
 
@@ -312,6 +314,8 @@ class BaseImbalanceBars(BaseBars):
                                           form of Pandas DataFrame
         """
         BaseBars.__init__(self, metric, batch_size)
+
+        self.reset_stats = reset_stats
 
         self.expected_imbalance_window = expected_imbalance_window
 
@@ -332,7 +336,7 @@ class BaseImbalanceBars(BaseBars):
         """
         self.open_price = None
         self.high_price, self.low_price = -np.inf, np.inf
-        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0}
+        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0, 'cum_sell_volume': 0}
         self.thresholds['cum_theta'] = 0
 
     def _extract_bars(self, data: Tuple[dict, pd.DataFrame]) -> list:
@@ -349,7 +353,7 @@ class BaseImbalanceBars(BaseBars):
             # Set variables
             date_time = row[0]
             self.tick_num += 1
-            price = np.float(row[1])
+            price = float(row[1])
             volume = row[2]
             dollar_value = price * volume
             signed_tick = self._apply_tick_rule(price)
@@ -366,6 +370,9 @@ class BaseImbalanceBars(BaseBars):
             self.cum_statistics['cum_volume'] += volume
             if signed_tick == 1:
                 self.cum_statistics['cum_buy_volume'] += volume
+
+            elif signed_tick == -1:
+                self.cum_statistics['cum_sell_volume'] += volume
 
             # Imbalance calculations
             imbalance = self._get_imbalance(price, signed_tick, volume)
@@ -394,7 +401,9 @@ class BaseImbalanceBars(BaseBars):
                 self.thresholds['expected_imbalance'] = self._get_expected_imbalance(
                     self.expected_imbalance_window)
                 # Reset counters
-                self._reset_cache()
+                
+                if self.reset_stats:
+                    self._reset_cache() # comentei aqui
 
         return list_bars
 
@@ -437,7 +446,8 @@ class BaseRunBars(BaseBars):
 
     def __init__(self, metric: str, batch_size: int, num_prev_bars: int,
                  expected_imbalance_window: int,
-                 exp_num_ticks_init: int, analyse_thresholds: bool):
+                 exp_num_ticks_init: int, analyse_thresholds: bool,
+                 reset_stats: bool):
         """
         Constructor
 
@@ -449,6 +459,8 @@ class BaseRunBars(BaseBars):
         :param analyse_thresholds: (bool) flag to return thresholds values (thetas, exp_num_ticks, exp_runs) in Pandas DataFrame
         """
         BaseBars.__init__(self, metric, batch_size)
+
+        self.reset_stats = reset_stats
 
         self.num_prev_bars = num_prev_bars
         self.expected_imbalance_window = expected_imbalance_window
@@ -475,7 +487,7 @@ class BaseRunBars(BaseBars):
         """
         self.open_price = None
         self.high_price, self.low_price = -np.inf, np.inf
-        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0}
+        self.cum_statistics = {'cum_ticks': 0, 'cum_dollar_value': 0, 'cum_volume': 0, 'cum_buy_volume': 0, 'cum_sell_volume':0}
         self.thresholds['cum_theta_buy'], self.thresholds['cum_theta_sell'], self.thresholds['buy_ticks_num'] = 0, 0, 0
 
     def _extract_bars(self, data: Tuple[list, np.ndarray]) -> list:
@@ -492,7 +504,7 @@ class BaseRunBars(BaseBars):
             # Set variables
             date_time = row[0]
             self.tick_num += 1
-            price = np.float(row[1])
+            price = float(row[1])
             volume = row[2]
             dollar_value = price * volume
             signed_tick = self._apply_tick_rule(price)
@@ -509,6 +521,9 @@ class BaseRunBars(BaseBars):
             self.cum_statistics['cum_volume'] += volume
             if signed_tick == 1:
                 self.cum_statistics['cum_buy_volume'] += volume
+
+            elif signed_tick == -1:
+                self.cum_statistics['cum_sell_volume'] += volume
 
             # Imbalance calculations
             imbalance = self._get_imbalance(price, signed_tick, volume)
@@ -572,7 +587,8 @@ class BaseRunBars(BaseBars):
                     self.imbalance_tick_statistics['imbalance_array_sell'], self.expected_imbalance_window)
 
                 # Reset counters
-                self._reset_cache()
+                if self.reset_stats:
+                    self._reset_cache()
 
         return list_bars
 
